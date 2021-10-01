@@ -7,25 +7,20 @@
 #include "CmdMessenger.h"
 #include <AccelStepper.h>
 
-
-
-
-
 QueueHandle_t queue;
 
 enum {
   who_are_you,
   my_name_is,
   Add_CMD,
-  return_val,
+  return_val1,
+  set_speed,
+  return_val2,
   error,
 };
 
 struct moto_cmd {
-  int Xspeed;
-  int X;
-  int Yspeed;
-  int Y;
+  int speed;
 };
 
 const int BAUD_RATE = 9600;
@@ -36,28 +31,13 @@ void on_who_are_you(void)
   c.sendCmd(my_name_is,"Bob");
 }
 
-void on_Add_CMD(void)
-{
-  struct moto_cmd load_cmd;
-  load_cmd.Xspeed = c.readBinArg<int>();
-  load_cmd.X =      c.readBinArg<int>();
-  load_cmd.Yspeed = c.readBinArg<int>();
-  load_cmd.Y =      c.readBinArg<int>();
-
-  xQueueSend(queue, &load_cmd, portMAX_DELAY);
-
-  c.sendBinCmd(return_val,1);
-}
-
 void on_set_speed(void)
 {
   struct moto_cmd load_cmd;
-  int speed = c.readBinArg<int>();
+  load_cmd.speed = c.readBinArg<int>();
+  xQueueSend(queue, &load_cmd, portMAX_DELAY);
 
-  stepper.setMaxSpeed(1000);
-  stepper.setSpeed(speed); 
-
-  c.sendBinCmd(return_val,1);
+  c.sendBinCmd(return_val2,1);
 }
 // #include "FastAccelStepper.h"
 
@@ -123,13 +103,12 @@ void on_unknown_command(void)
 void attach_callbacks(void) 
 {   
   c.attach(who_are_you,on_who_are_you);
-  // c.attach(sum_two_ints,on_sum_two_ints);
+  c.attach(set_speed,on_set_speed);
   c.attach(on_unknown_command);
 }
 
 void setup()
 {  
-  queue = xQueueCreate( 100, sizeof( struct moto_cmd ) );
 
   stepper1.setMaxSpeed(5000.0);
   stepper1.setAcceleration(100000.0);
@@ -140,25 +119,28 @@ void setup()
   stepper2.moveTo(3000);
 
   struct moto_cmd load_cmd;
-  load_cmd.Xspeed = 1;
-  load_cmd.X = 1;
-  load_cmd.Yspeed = 20.4;
-  load_cmd.Y = 1;
+  load_cmd.speed = 1;
 
   // stepper3.setMaxSpeed(300.0);
   // stepper3.setAcceleration(100.0);
   // stepper3.moveTo(1000000); 
-  xQueueSend(queue, &load_cmd, portMAX_DELAY);
 
   Serial.begin(BAUD_RATE);
   attach_callbacks();    
-
 }
+
 void loop()
 {
   struct moto_cmd pull_cmd;
   for(;;)
   {
-    stepper1.runSpeed();
+    if( 1 == xQueueReceive(queue, &pull_cmd, portMAX_DELAY) )
+    {
+      stepper1.setMaxSpeed(1000);
+      stepper1.setSpeed(pull_cmd.speed); 
+    } else 
+    {
+      stepper1.runSpeed();
+    }
   }
 }
